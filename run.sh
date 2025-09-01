@@ -3,7 +3,7 @@ set -euo pipefail
 
 SRC=benchmark.c
 CC="zig cc"
-CFLAGS="-O3 -march=native -mtune=native -flto=thin -fomit-frame-pointer -funroll-loops -DNDEBUG -fno-math-errno -fno-trapping-math"
+CFLAGS="-O3 -march=native -mtune=native -flto=full -fomit-frame-pointer -funroll-loops -DNDEBUG -fno-math-errno -fno-trapping-math"
 
 if [[ ! -f $SRC ]]; then
     echo "Source file $SRC not found" >&2
