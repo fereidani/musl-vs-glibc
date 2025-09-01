@@ -191,10 +191,10 @@ def main():
     kernel_version = _get_kernel_version()
     lines.extend(
         [
-            f"Compiler: zig {compiler_version[0]} using {compiler_version[1]}",
-            f"Kernel: {kernel_version}",
-            f"CPU: {_get_cpu_model()}",
-            f"Date: {datetime.date.today().isoformat()}",
+            f"* Compiler: zig {compiler_version[0]} using {compiler_version[1]}",
+            f"* Kernel: {kernel_version}",
+            f"* CPU: {_get_cpu_model()}",
+            f"* Date: {datetime.date.today().isoformat()}",
             ""
         ]
     )
@@ -261,11 +261,11 @@ def main():
     lines.append(f"- musl faster (ns/op): {musl_faster}")
     lines.append(f"- Ties (ns/op): {ties}")
     if glibc_faster > musl_faster:
-        lines.append("Overall (by count): glibc wins more benchmarks.")
+        lines.append("- Overall (by count): glibc wins more benchmarks.")
     elif musl_faster > glibc_faster:
-        lines.append("Overall (by count): musl wins more benchmarks.")
+        lines.append("- Overall (by count): musl wins more benchmarks.")
     else:
-        lines.append("Overall (by count): tie.")
+        lines.append("- Overall (by count): tie.")
 
     OUT_MD.write_text("\n".join(lines) + "\n", encoding="utf-8")
     print(f"Wrote {OUT_MD}")
