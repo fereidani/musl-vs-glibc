@@ -1,5 +1,6 @@
 
 
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -33,12 +34,48 @@ static inline uint64_t now_ns(void)
     return (uint64_t)ts.tv_sec * 1000000000ull + (uint64_t)ts.tv_nsec;
 }
 
+#if defined(__GNUC__) || defined(__clang__)
+#define likely(x) (__builtin_expect(!!(x), 1))
+#define unlikely(x) (__builtin_expect(!!(x), 0))
+#else
+#define likely(x) (x)
+#define unlikely(x) (x)
+#endif
+
+static void
+die(const char *msg)
+{
+    fprintf(stderr, "FATAL: %s\n", msg);
+    exit(1);
+}
+
+#if defined(_MSC_VER)
+__declspec(noinline)
+#elif defined(__GNUC__) || defined(__clang__)
+__attribute__((cold, noinline))
+#endif
+static void
+out_of_memory_error()
+{
+    die("out of memory");
+}
+
+static inline void *xmalloc(size_t n)
+{
+    void *p = malloc(n ? n : 1);
+    if unlikely (!p)
+    {
+        out_of_memory_error();
+    }
+    return p;
+}
+
 /* ---------------- Benchmarks ---------------- */
 
 /* 1. strlen */
 static void init_strlen(void **state)
 {
-    char *s = malloc(1025);
+    char *s = xmalloc(1025);
     for (int i = 0; i < 1024; i++)
         s[i] = 'A' + (i % 26);
     s[1024] = '\0';
@@ -66,7 +103,7 @@ typedef struct
 } strcmp_state;
 static void init_strcmp(void **state)
 {
-    strcmp_state *st = malloc(sizeof(*st));
+    strcmp_state *st = xmalloc(sizeof(*st));
     st->a = strdup("The quick brown fox jumps over the lazy dog 1234567890");
     st->b = strdup("The quick brown fox jumps over the lazy dog 1234567890");
     *state = st;
@@ -99,12 +136,12 @@ typedef struct
 } strcpy_state;
 static void init_strcpy(void **state)
 {
-    strcpy_state *st = malloc(sizeof(*st));
-    st->src = malloc(2048);
+    strcpy_state *st = xmalloc(sizeof(*st));
+    st->src = xmalloc(2048);
     for (int i = 0; i < 2047; i++)
         st->src[i] = 'a' + (i % 26);
     st->src[2047] = '\0';
-    st->dst = malloc(2048);
+    st->dst = xmalloc(2048);
     *state = st;
 }
 static size_t run_strcpy(void *state, size_t iters)
@@ -135,9 +172,9 @@ typedef struct
 } strcat_state;
 static void init_strcat(void **state)
 {
-    strcat_state *st = malloc(sizeof(*st));
+    strcat_state *st = xmalloc(sizeof(*st));
     st->piece = strdup("segment1234567890");
-    st->buf = malloc(1024);
+    st->buf = xmalloc(1024);
     *state = st;
 }
 static size_t run_strcat(void *state, size_t iters)
@@ -171,8 +208,8 @@ typedef struct
 } strchr_state;
 static void init_strchr(void **state)
 {
-    strchr_state *st = malloc(sizeof(*st));
-    st->s = malloc(4097);
+    strchr_state *st = xmalloc(sizeof(*st));
+    st->s = xmalloc(4097);
     for (int i = 0; i < 4096; i++)
         st->s[i] = 'a' + (i % 26);
     st->s[4096] = '\0';
@@ -214,10 +251,10 @@ typedef struct
 } memcmp_state;
 static void init_memcmp(void **state)
 {
-    memcmp_state *st = malloc(sizeof(*st));
+    memcmp_state *st = xmalloc(sizeof(*st));
     st->len = 8192;
-    st->a = malloc(st->len);
-    st->b = malloc(st->len);
+    st->a = xmalloc(st->len);
+    st->b = xmalloc(st->len);
     for (size_t i = 0; i < st->len; i++)
     {
         st->a[i] = (unsigned char)(i & 0xFF);
@@ -253,10 +290,10 @@ typedef struct
 } memcpy_state;
 static void init_memcpy(void **state)
 {
-    memcpy_state *st = malloc(sizeof(*st));
+    memcpy_state *st = xmalloc(sizeof(*st));
     st->len = 16384;
-    st->src = malloc(st->len);
-    st->dst = malloc(st->len);
+    st->src = xmalloc(st->len);
+    st->dst = xmalloc(st->len);
     for (size_t i = 0; i < st->len; i++)
         st->src[i] = (unsigned char)(rand());
     *state = st;
@@ -290,9 +327,9 @@ typedef struct
 } memmove_state;
 static void init_memmove(void **state)
 {
-    memmove_state *st = malloc(sizeof(*st));
+    memmove_state *st = xmalloc(sizeof(*st));
     st->len = 16384;
-    st->buf = malloc(st->len + 64);
+    st->buf = xmalloc(st->len + 64);
     for (size_t i = 0; i < st->len + 64; i++)
         st->buf[i] = (unsigned char)i;
     st->shift = 32;
@@ -331,10 +368,10 @@ static int qsort_cmp_int(const void *a, const void *b)
 }
 static void init_qsort(void **state)
 {
-    qsort_state *st = malloc(sizeof(*st));
+    qsort_state *st = xmalloc(sizeof(*st));
     st->n = 4096;
-    st->orig = malloc(st->n * sizeof(int));
-    st->work = malloc(st->n * sizeof(int));
+    st->orig = xmalloc(st->n * sizeof(int));
+    st->work = xmalloc(st->n * sizeof(int));
     srand(1234);
     for (size_t i = 0; i < st->n; i++)
         st->orig[i] = rand();
@@ -371,13 +408,13 @@ typedef struct
 } bsearch_state;
 static void init_bsearch(void **state)
 {
-    bsearch_state *st = malloc(sizeof(*st));
+    bsearch_state *st = xmalloc(sizeof(*st));
     st->n = 4096;
     st->k = 128;
-    st->arr = malloc(st->n * sizeof(int));
+    st->arr = xmalloc(st->n * sizeof(int));
     for (size_t i = 0; i < st->n; i++)
         st->arr[i] = (int)(i * 2);
-    st->keys = malloc(st->k * sizeof(int));
+    st->keys = xmalloc(st->k * sizeof(int));
     for (size_t i = 0; i < st->k; i++)
         st->keys[i] = (int)((i * 7) % (st->n * 2));
     *state = st;
@@ -415,7 +452,7 @@ static size_t run_malloc_small(void *state, size_t iters)
         void *ptrs[256];
         for (int k = 0; k < 256; k++)
         {
-            ptrs[k] = malloc(32);
+            ptrs[k] = xmalloc(32);
             ops++;
         }
         for (int k = 0; k < 256; k++)
@@ -434,7 +471,7 @@ static size_t run_malloc_medium(void *state, size_t iters)
         void *ptrs[64];
         for (int k = 0; k < 64; k++)
         {
-            ptrs[k] = malloc(4096);
+            ptrs[k] = xmalloc(4096);
             ops++;
         }
         for (int k = 0; k < 64; k++)
@@ -451,14 +488,14 @@ static size_t run_realloc_pattern(void *state, size_t iters)
     for (size_t i = 0; i < iters; i++)
     {
         size_t sz = 16;
-        char *p = malloc(sz);
+        char *p = xmalloc(sz);
         for (int r = 0; r < 64; r++)
         {
             sz = (sz < 1024) ? sz * 2 : 16;
             char *np = realloc(p, sz);
             if (!np)
             {
-                free(p);
+                /* realloc failed: keep original p for single free after loop */
                 break;
             }
             p = np;
@@ -478,12 +515,12 @@ typedef struct
 } sprintf_int_state;
 static void init_sprintf_int(void **state)
 {
-    sprintf_int_state *st = malloc(sizeof(*st));
+    sprintf_int_state *st = xmalloc(sizeof(*st));
     st->n = 256;
-    st->vals = malloc(st->n * sizeof(int));
+    st->vals = xmalloc(st->n * sizeof(int));
     for (size_t i = 0; i < st->n; i++)
         st->vals[i] = (int)(i * i + 12345);
-    st->buf = malloc(32);
+    st->buf = xmalloc(32);
     *state = st;
 }
 static size_t run_sprintf_int(void *state, size_t iters)
@@ -518,12 +555,12 @@ typedef struct
 } sprintf_float_state;
 static void init_sprintf_float(void **state)
 {
-    sprintf_float_state *st = malloc(sizeof(*st));
+    sprintf_float_state *st = xmalloc(sizeof(*st));
     st->n = 128;
-    st->vals = malloc(st->n * sizeof(double));
+    st->vals = xmalloc(st->n * sizeof(double));
     for (size_t i = 0; i < st->n; i++)
         st->vals[i] = (double)i / 3.14159;
-    st->buf = malloc(64);
+    st->buf = xmalloc(64);
     *state = st;
 }
 static size_t run_sprintf_float(void *state, size_t iters)
@@ -559,16 +596,16 @@ typedef struct
 } snprintf_state;
 static void init_snprintf(void **state)
 {
-    snprintf_state *st = malloc(sizeof(*st));
+    snprintf_state *st = xmalloc(sizeof(*st));
     st->n = 128;
-    st->ivals = malloc(st->n * sizeof(int));
-    st->dvals = malloc(st->n * sizeof(double));
+    st->ivals = xmalloc(st->n * sizeof(int));
+    st->dvals = xmalloc(st->n * sizeof(double));
     for (size_t i = 0; i < st->n; i++)
     {
         st->ivals[i] = (int)i * 37;
         st->dvals[i] = i * 0.125 + 0.333;
     }
-    st->buf = malloc(256);
+    st->buf = xmalloc(256);
     *state = st;
 }
 static size_t run_snprintf(void *state, size_t iters)
@@ -603,9 +640,9 @@ typedef struct
 } strtod_state;
 static void init_strtod(void **state)
 {
-    strtod_state *st = malloc(sizeof(*st));
+    strtod_state *st = xmalloc(sizeof(*st));
     st->n = 256;
-    st->nums = malloc(st->n * sizeof(char *));
+    st->nums = xmalloc(st->n * sizeof(char *));
     for (size_t i = 0; i < st->n; i++)
     {
         char tmp[64];
@@ -647,11 +684,11 @@ typedef struct
 } strtok_state;
 static void init_strtok(void **state)
 {
-    strtok_state *st = malloc(sizeof(*st));
+    strtok_state *st = xmalloc(sizeof(*st));
     const char *pattern = "alpha,beta,gamma,delta,epsilon,zeta,eta,theta,iota,kappa,lambda,mu,nu,xi,omicron,pi,rho,sigma,tau,upsilon,phi,chi,psi,omega";
     size_t plen = strlen(pattern);
     st->len = plen * 8 + 1;
-    st->orig = malloc(st->len);
+    st->orig = xmalloc(st->len);
     st->orig[0] = '\0';
     for (int i = 0; i < 8; i++)
         strcat(st->orig, pattern);
@@ -661,7 +698,7 @@ static size_t run_strtok(void *state, size_t iters)
 {
     strtok_state *st = (strtok_state *)state;
     size_t ops = 0;
-    char *buf = malloc(st->len);
+    char *buf = xmalloc(st->len);
     for (size_t i = 0; i < iters; i++)
     {
         strcpy(buf, st->orig);
@@ -693,7 +730,7 @@ typedef struct
 } regex_state;
 static void init_regex(void **state)
 {
-    regex_state *st = malloc(sizeof(*st));
+    regex_state *st = xmalloc(sizeof(*st));
     const char *pattern = "^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,3}$";
     if (regcomp(&st->rx, pattern, REG_EXTENDED | REG_NOSUB) != 0)
     {
@@ -701,7 +738,7 @@ static void init_regex(void **state)
         exit(1);
     }
     st->n = 128;
-    st->lines = malloc(st->n * sizeof(char *));
+    st->lines = xmalloc(st->n * sizeof(char *));
     for (size_t i = 0; i < st->n; i++)
     {
         char tmp[128];
@@ -743,9 +780,9 @@ typedef struct
 } atoi_state;
 static void init_atoi(void **state)
 {
-    atoi_state *st = malloc(sizeof(*st));
+    atoi_state *st = xmalloc(sizeof(*st));
     st->n = 512;
-    st->nums = malloc(st->n * sizeof(char *));
+    st->nums = xmalloc(st->n * sizeof(char *));
     for (size_t i = 0; i < st->n; i++)
     {
         char tmp[32];
@@ -778,6 +815,581 @@ static void cleanup_atoi(void *state)
     free(st);
 }
 
+/* 21. strstr */
+typedef struct
+{
+    char *haystack;
+    char **needles;
+    size_t n;
+} strstr_state;
+
+static void init_strstr(void **state)
+{
+    strstr_state *st = xmalloc(sizeof(*st));
+    size_t hlen = 65536;
+    st->haystack = xmalloc(hlen + 1);
+    /* Build haystack: repeating pattern segments with some markers */
+    const char *segment = "lorem_ipsum_dolor_sit_amet_consectetur_";
+    size_t seglen = strlen(segment);
+    for (size_t i = 0; i < hlen; i++)
+        st->haystack[i] = segment[i % seglen];
+    st->haystack[hlen] = '\0';
+
+    /* Insert a few distinctive substrings at known positions */
+    const char *markers[] = {"ALPHA_token_X", "BETA_token_Y", "GAMMA_token_Z"};
+    size_t mcount = sizeof(markers) / sizeof(markers[0]);
+    for (size_t m = 0; m < mcount; m++)
+    {
+        size_t pos = (hlen / (mcount + 1)) * (m + 1);
+        if (pos + strlen(markers[m]) < hlen)
+            strcpy(st->haystack + pos, markers[m]);
+        // memcpy(st->haystack + pos, markers[m], strlen(markers[m]));
+    }
+
+    st->n = 16;
+    st->needles = xmalloc(st->n * sizeof(char *));
+    /* Half existing (from markers or segment pieces), half non-existing */
+    for (size_t i = 0; i < st->n; i++)
+    {
+        char tmp[64];
+        if (i < 5)
+            snprintf(tmp, sizeof(tmp), "%s", markers[i % mcount]);
+        else if (i < 8)
+            snprintf(tmp, sizeof(tmp), "ipsum_dolor_sit");
+        else if (i < 11)
+            snprintf(tmp, sizeof(tmp), "consectetur_lorem");
+        else
+            snprintf(tmp, sizeof(tmp), "no_such_substring_%zu", i);
+        st->needles[i] = strdup(tmp);
+    }
+    *state = st;
+}
+
+static size_t run_strstr(void *state, size_t iters)
+{
+    strstr_state *st = (strstr_state *)state;
+    size_t ops = 0;
+    size_t n = st->n;
+    for (size_t i = 0; i < iters; i++)
+    {
+        for (size_t k = 0; k < n; k++)
+        {
+            char *p = strstr(st->haystack, st->needles[(i + k) % n]);
+            sink_ptr = p;
+            ops++;
+        }
+    }
+    return ops;
+}
+
+static void cleanup_strstr(void *state)
+{
+    strstr_state *st = (strstr_state *)state;
+    for (size_t i = 0; i < st->n; i++)
+        free(st->needles[i]);
+    free(st->needles);
+    free(st->haystack);
+    free(st);
+}
+
+#include <stdarg.h>
+
+/* 22. memset */
+typedef struct
+{
+    unsigned char *area;
+    size_t len;
+} bench_memset_state;
+static void init_memset_bench(void **st)
+{
+    bench_memset_state *s = xmalloc(sizeof *s);
+    s->len = 1 << 15;
+    s->area = xmalloc(s->len);
+    *st = s;
+}
+static size_t run_memset_bench(void *st, size_t loop)
+{
+    bench_memset_state *s = (bench_memset_state *)st;
+    size_t count = 0;
+    for (size_t iter = 0; iter < loop; ++iter)
+    {
+        int v = (int)(iter & 0xFF);
+        memset(s->area, v, s->len);
+        sink_int = v;
+        ++count;
+    }
+    return count;
+}
+static void cleanup_memset_bench(void *st)
+{
+    bench_memset_state *s = (bench_memset_state *)st;
+    free(s->area);
+    free(s);
+}
+
+/* 23. memchr / memrchr (GNU) */
+typedef struct
+{
+    unsigned char *blk;
+    size_t len;
+} bench_memchr_state;
+static void init_memchr_bench(void **st)
+{
+    bench_memchr_state *s = xmalloc(sizeof *s);
+    s->len = 1 << 14;
+    s->blk = xmalloc(s->len);
+    for (size_t i = 0; i < s->len; i++)
+        s->blk[i] = (unsigned char)(i * 17);
+    *st = s;
+}
+static size_t run_memchr_bench(void *st, size_t loop)
+{
+    bench_memchr_state *s = (bench_memchr_state *)st;
+    size_t count = 0;
+    for (size_t iter = 0; iter < loop; ++iter)
+    {
+        unsigned char needle = (unsigned char)(iter & 0xFF);
+        void *p = memchr(s->blk, needle, s->len);
+        sink_ptr = p;
+        ++count;
+    }
+    return count;
+}
+static size_t run_memrchr_bench(void *st, size_t loop)
+{
+    bench_memchr_state *s = (bench_memchr_state *)st;
+    size_t count = 0;
+    for (size_t iter = 0; iter < loop; ++iter)
+    {
+        unsigned char needle = (unsigned char)((iter * 3) & 0xFF);
+        void *p = memrchr(s->blk, needle, s->len);
+        sink_ptr = p;
+        ++count;
+    }
+    return count;
+}
+static void cleanup_memchr_bench(void *st)
+{
+    bench_memchr_state *s = (bench_memchr_state *)st;
+    free(s->blk);
+    free(s);
+}
+
+/* 24. strnlen */
+typedef struct
+{
+    char *txt;
+    size_t cap;
+} bench_strnlen_state;
+static void init_strnlen_bench(void **st)
+{
+    bench_strnlen_state *s = xmalloc(sizeof *s);
+    s->cap = 4096;
+    s->txt = xmalloc(s->cap);
+    for (size_t i = 0; i < s->cap - 1; i++)
+        s->txt[i] = (i % 97) ? 'a' + (i % 26) : '\0';
+    s->txt[s->cap - 1] = '\0';
+    *st = s;
+}
+static size_t run_strnlen_bench(void *st, size_t loop)
+{
+    bench_strnlen_state *s = (bench_strnlen_state *)st;
+    size_t count = 0;
+    for (size_t iter = 0; iter < loop; ++iter)
+    {
+        size_t lim = 16 + (iter % s->cap);
+        size_t L = strnlen(s->txt, lim);
+        sink_size = L;
+        ++count;
+    }
+    return count;
+}
+static void cleanup_strnlen_bench(void *st)
+{
+    bench_strnlen_state *s = (bench_strnlen_state *)st;
+    free(s->txt);
+    free(s);
+}
+
+/* 25. strncmp */
+typedef struct
+{
+    char *a;
+    char *b;
+    size_t len;
+} bench_strncmp_state;
+static void init_strncmp_bench(void **st)
+{
+    bench_strncmp_state *s = xmalloc(sizeof *s);
+    s->len = 2048;
+    s->a = xmalloc(s->len + 1);
+    s->b = xmalloc(s->len + 1);
+    for (size_t i = 0; i < s->len; i++)
+    {
+        char c = 'a' + (i % 26);
+        s->a[i] = c;
+        s->b[i] = c;
+    }
+    s->a[s->len] = '\0';
+    s->b[s->len] = '\0';
+    s->b[s->len / 2] = 'Z';
+    *st = s;
+}
+static size_t run_strncmp_bench(void *st, size_t loop)
+{
+    bench_strncmp_state *s = (bench_strncmp_state *)st;
+    size_t count = 0;
+    for (size_t iter = 0; iter < loop; ++iter)
+    {
+        size_t n = 8 + ((iter * 13) % (s->len));
+        int r = strncmp(s->a, s->b, n);
+        sink_int = r;
+        ++count;
+    }
+    return count;
+}
+static void cleanup_strncmp_bench(void *st)
+{
+    bench_strncmp_state *s = (bench_strncmp_state *)st;
+    free(s->a);
+    free(s->b);
+    free(s);
+}
+
+/* 26. strncpy */
+typedef struct
+{
+    char *src;
+    char *dst;
+    size_t len;
+} bench_strncpy_state;
+static void init_strncpy_bench(void **st)
+{
+    bench_strncpy_state *s = xmalloc(sizeof *s);
+    s->len = 4096;
+    s->src = xmalloc(s->len + 1);
+    s->dst = xmalloc(s->len + 16);
+    for (size_t i = 0; i < s->len; i++)
+        s->src[i] = 'A' + (i % 26);
+    s->src[s->len] = '\0';
+    *st = s;
+}
+static size_t run_strncpy_bench(void *st, size_t loop)
+{
+    bench_strncpy_state *s = (bench_strncpy_state *)st;
+    size_t count = 0;
+    for (size_t iter = 0; iter < loop; ++iter)
+    {
+        size_t n = 32 + (iter % s->len);
+        size_t dst_cap = s->len + 16; /* allocated size of dst */
+        if (n > dst_cap)
+            n = dst_cap; /* clamp to avoid overflow & zero padding beyond allocation */
+        char *r = strncpy(s->dst, s->src, n);
+        sink_ptr = r;
+        ++count;
+    }
+    return count;
+}
+static void cleanup_strncpy_bench(void *st)
+{
+    bench_strncpy_state *s = (bench_strncpy_state *)st;
+    free(s->src);
+    free(s->dst);
+    free(s);
+}
+
+/* 27. strncat */
+typedef struct
+{
+    char *dst;
+    char *piece;
+    size_t cap;
+} bench_strncat_state;
+static void init_strncat_bench(void **st)
+{
+    bench_strncat_state *s = xmalloc(sizeof *s);
+    s->cap = 8192;
+    s->dst = xmalloc(s->cap);
+    s->piece = strdup("segment_data_block_");
+    *st = s;
+}
+static size_t run_strncat_bench(void *st, size_t loop)
+{
+    bench_strncat_state *s = (bench_strncat_state *)st;
+    size_t count = 0;
+    for (size_t iter = 0; iter < loop; ++iter)
+    {
+        s->dst[0] = '\0';
+        for (int r = 0; r < 16; r++)
+        {
+            strncat(s->dst, s->piece, 8 + (iter & 7));
+            ++count;
+        }
+        sink_size = strlen(s->dst);
+    }
+    return count;
+}
+static void cleanup_strncat_bench(void *st)
+{
+    bench_strncat_state *s = (bench_strncat_state *)st;
+    free(s->dst);
+    free(s->piece);
+    free(s);
+}
+
+/* 28. strrchr */
+typedef struct
+{
+    char *text;
+} bench_strrchr_state;
+static void init_strrchr_bench(void **st)
+{
+    bench_strrchr_state *s = xmalloc(sizeof *s);
+    size_t L = 10000;
+    s->text = xmalloc(L + 1);
+    for (size_t i = 0; i < L; i++)
+    {
+        s->text[i] = (i % 101) == 0 ? 'X' : 'a' + (i % 26);
+    }
+    s->text[L] = '\0';
+    *st = s;
+}
+static size_t run_strrchr_bench(void *st, size_t loop)
+{
+    bench_strrchr_state *s = (bench_strrchr_state *)st;
+    size_t count = 0;
+    size_t len = strlen(s->text);
+    for (size_t iter = 0; iter < loop; ++iter)
+    {
+        /* Mutate one character so the location of the last 'X' changes,
+           preventing the optimizer from treating strrchr() as a pure/constant call. */
+        size_t idx = (iter * 131u) % len;
+        char prev = s->text[idx];
+        s->text[idx] = (prev == 'X') ? ('a' + (char)(iter % 26)) : 'X';
+
+        char *p = strrchr(s->text, 'X');
+        /* Use the offset (accumulated into a volatile) so result is needed. */
+        if (p)
+            sink_size += (size_t)(p - s->text);
+        ++count;
+    }
+    return count;
+}
+static void cleanup_strrchr_bench(void *st)
+{
+    bench_strrchr_state *s = (bench_strrchr_state *)st;
+    free(s->text);
+    free(s);
+}
+
+/* 29. strtok_r */
+typedef struct
+{
+    char *orig;
+    size_t len;
+} bench_strtok_r_state;
+static void init_strtok_r_bench(void **st)
+{
+    bench_strtok_r_state *s = xmalloc(sizeof *s);
+    const char *src = "aa,bb,cc,dd,ee,ff,gg,hh,ii,jj,kk,ll,mm,nn,oo,pp,qq";
+    size_t L = strlen(src);
+    s->len = L * 16 + 1;
+    s->orig = xmalloc(s->len);
+    s->orig[0] = '\0';
+    for (int k = 0; k < 16; k++)
+        strcat(s->orig, src);
+    *st = s;
+}
+static size_t run_strtok_r_bench(void *st, size_t loop)
+{
+    bench_strtok_r_state *s = (bench_strtok_r_state *)st;
+    char *buf = xmalloc(s->len);
+    size_t count = 0;
+    for (size_t iter = 0; iter < loop; ++iter)
+    {
+        strcpy(buf, s->orig);
+        char *ctx = NULL;
+        char *tok = strtok_r(buf, ",", &ctx);
+        while (tok)
+        {
+            sink_ptr = tok;
+            ++count;
+            tok = strtok_r(NULL, ",", &ctx);
+        }
+    }
+    free(buf);
+    return count;
+}
+static void cleanup_strtok_r_bench(void *st)
+{
+    bench_strtok_r_state *s = (bench_strtok_r_state *)st;
+    free(s->orig);
+    free(s);
+}
+
+/* 30. FILE I/O throughput (fwrite/fread/fseek) */
+typedef struct
+{
+    unsigned char *data;
+    size_t len;
+} bench_file_io_state;
+static void init_file_io_bench(void **st)
+{
+    bench_file_io_state *s = xmalloc(sizeof *s);
+    s->len = 1 << 20;
+    s->data = xmalloc(s->len);
+    for (size_t i = 0; i < s->len; i++)
+        s->data[i] = (unsigned char)(i * 31);
+    *st = s;
+}
+static size_t run_fwrite_fread_bench(void *st, size_t loop)
+{
+    bench_file_io_state *s = (bench_file_io_state *)st;
+    size_t count = 0;
+    unsigned char *tmp = xmalloc(s->len);
+    for (size_t iter = 0; iter < loop; ++iter)
+    {
+        FILE *fp = tmpfile();
+        if (!fp)
+            break;
+        size_t w = fwrite(s->data, 1, s->len, fp);
+        fseek(fp, 0, SEEK_SET);
+        size_t r = fread(tmp, 1, s->len, fp);
+        sink_size = w + r;
+        fclose(fp);
+        ++count;
+    }
+    free(tmp);
+    return count;
+}
+static void cleanup_file_io_bench(void *st)
+{
+    bench_file_io_state *s = (bench_file_io_state *)st;
+    free(s->data);
+    free(s);
+}
+
+/* 31. fgets / getline */
+typedef struct
+{
+    char *big;
+    size_t sz;
+} bench_line_in_state;
+static void init_line_in_bench(void **st)
+{
+    bench_line_in_state *s = xmalloc(sizeof *s);
+    size_t lines = 5000;
+    s->sz = lines * 32 + 1;
+    s->big = xmalloc(s->sz);
+    char *p = s->big;
+    for (size_t i = 0; i < lines; i++)
+    {
+        int n = sprintf(p, "line_%zu value=%zu\n", i, i * i);
+        p += n;
+    }
+    *p = '\0';
+    *st = s;
+}
+static size_t run_fgets_bench(void *st, size_t loop)
+{
+    bench_line_in_state *s = (bench_line_in_state *)st;
+    size_t count = 0;
+    char buf[128];
+    for (size_t iter = 0; iter < loop; ++iter)
+    {
+        FILE *fp = fmemopen(s->big, s->sz, "r");
+        if (!fp)
+            break;
+        while (fgets(buf, sizeof buf, fp))
+        {
+            sink_int += (int)buf[0];
+            ++count;
+        }
+        fclose(fp);
+    }
+    return count;
+}
+static size_t run_getline_bench(void *st, size_t loop)
+{
+    bench_line_in_state *s = (bench_line_in_state *)st;
+    size_t count = 0;
+
+    for (size_t iter = 0; iter < loop; ++iter)
+    {
+        FILE *fp = fmemopen(s->big, s->sz, "r");
+        if (!fp)
+            break;
+        char *line = NULL;
+        size_t n = 0;
+        while (getline(&line, &n, fp) > 0)
+        {
+            sink_int += (int)line[0];
+            ++count;
+        }
+        free(line);
+        fclose(fp);
+    }
+    return count;
+}
+static void cleanup_line_in_bench(void *st)
+{
+    bench_line_in_state *s = (bench_line_in_state *)st;
+    free(s->big);
+    free(s);
+}
+
+/* 32. vprintf / vsnprintf */
+static int helper_vsnp(char *dst, size_t cap, const char *fmt, ...)
+{
+    va_list ap;
+    va_start(ap, fmt);
+    int rv = vsnprintf(dst, cap, fmt, ap);
+    va_end(ap);
+    return rv;
+}
+typedef struct
+{
+    char *buf;
+} bench_vprintf_state;
+static void init_vprintf_bench(void **st)
+{
+    bench_vprintf_state *s = xmalloc(sizeof *s);
+    s->buf = xmalloc(512);
+    *st = s;
+}
+static size_t run_vsnprintf_bench(void *st, size_t loop)
+{
+    bench_vprintf_state *s = (bench_vprintf_state *)st;
+    size_t count = 0;
+    for (size_t iter = 0; iter < loop; ++iter)
+    {
+        int r = helper_vsnp(s->buf, 512, "val=%d hex=%x str=%s dbl=%.3f",
+                            (int)iter, (unsigned)(iter * 17), "token", (double)iter / 3.0);
+        sink_int = r;
+        ++count;
+    }
+    return count;
+}
+static size_t run_vprintf_bench(void *st, size_t loop)
+{
+    bench_vprintf_state *s = (bench_vprintf_state *)st;
+    size_t count = 0;
+    for (size_t iter = 0; iter < loop; ++iter)
+    {
+        int r = helper_vsnp(s->buf, 512, "A:%d B:%u C:%ld D:%0.2f",
+                            (int)iter, (unsigned)iter, (long)(iter * iter), (double)iter / 7.0);
+        sink_int = r;
+        ++count;
+    }
+    return count;
+}
+static void cleanup_vprintf_bench(void *st)
+{
+    bench_vprintf_state *s = (bench_vprintf_state *)st;
+    free(s->buf);
+    free(s);
+}
+
 /* Benchmark registry */
 static Benchmark benchmarks[] = {
     {"strlen", init_strlen, run_strlen, cleanup_free},
@@ -800,6 +1412,18 @@ static Benchmark benchmarks[] = {
     {"strtok_parse", init_strtok, run_strtok, cleanup_strtok},
     {"regex_match", init_regex, run_regex, cleanup_regex},
     {"atoi_parse", init_atoi, run_atoi, cleanup_atoi},
+    {"strstr_search", init_strstr, run_strstr, cleanup_strstr},
+    {"strnlen", init_strnlen_bench, run_strnlen_bench, cleanup_strnlen_bench},
+    {"strncmp", init_strncmp_bench, run_strncmp_bench, cleanup_strncmp_bench},
+    {"strncpy", init_strncpy_bench, run_strncpy_bench, cleanup_strncpy_bench},
+    {"strncat", init_strncat_bench, run_strncat_bench, cleanup_strncat_bench},
+    {"strrchr", init_strrchr_bench, run_strrchr_bench, cleanup_strrchr_bench},
+    {"strtok_r_parse", init_strtok_r_bench, run_strtok_r_bench, cleanup_strtok_r_bench},
+    {"file_io_rw", init_file_io_bench, run_fwrite_fread_bench, cleanup_file_io_bench},
+    {"fgets_read", init_line_in_bench, run_fgets_bench, cleanup_line_in_bench},
+    {"getline_read", init_line_in_bench, run_getline_bench, cleanup_line_in_bench},
+    {"vsnprintf_mix", init_vprintf_bench, run_vsnprintf_bench, cleanup_vprintf_bench},
+    {"vprintf_mix", init_vprintf_bench, run_vprintf_bench, cleanup_vprintf_bench},
 };
 
 static void usage(const char *prog)
